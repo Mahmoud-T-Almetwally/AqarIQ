@@ -168,10 +168,24 @@ class LLMRateLimitError(LLMError):
     Distinguish from :class:`RateLimitExceededError`: that one is *our* abuse
     protection rejecting a client (429); this one is an upstream budget being
     drained (503 — retrying later may help, hammering now will not).
+
+    Carries ``retry_after`` (seconds) parsed from the provider response or
+    the tracked quota reset, surfaced as a ``Retry-After`` header by the
+    API error envelope so well-behaved clients back off.
     """
 
     code = "llm_rate_limited"
     http_status = 503
+
+    def __init__(
+        self,
+        message: str | None = None,
+        *,
+        retry_after: int | None = None,
+        **kwargs: Any,
+    ) -> None:
+        self.retry_after = retry_after
+        super().__init__(message, **kwargs)
 
 
 class LLMTimeoutError(LLMError):

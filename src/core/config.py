@@ -105,6 +105,10 @@ class Settings(BaseSettings):
     etl_queue_name: str = "etl.listings"
     etl_dlq_name: str = "etl.listings.dlq"
     mq_prefetch_count: int = 10
+    mq_connect_timeout_seconds: float = 10.0
+    # Publish attempts before the request fails (robust connection
+    # reconnects underneath; 1 means "fail on first error").
+    mq_publish_attempts: int = 2
     # Alert threshold well under CloudAMQP's 20k queued-message cap (§8).
     queue_depth_alert_threshold: int = 5000
 
