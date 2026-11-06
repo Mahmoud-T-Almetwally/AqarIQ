@@ -21,7 +21,6 @@ from src.core import (
     ConfigurationError,
     Settings,
     get_logger,
-    get_settings,
     setup_logging,
 )
 from src.services import (
@@ -172,13 +171,49 @@ def storage_smoke(settings: Settings) -> None:
     asyncio.run(_session_roundtrip())
 
 
+async def app_smoke(settings: Settings) -> None:
+    """The real app factory: boot the lifespan, answer /health, shut down.
+
+    Local settings carry no URLs, so this exercises the graceful boot:
+    static 200 from /health with both pools skipped — exactly what a
+    cold CI instance or a UptimeRobot ping sees.
+    """
+    from httpx2 import ASGITransport, AsyncClient
+
+    from src.main import create_app, lifespan
+
+    app = create_app(settings)
+    async with lifespan(app):
+        transport = ASGITransport(app=app)
+        async with AsyncClient(
+            transport=transport, base_url="http://smoke"
+        ) as client:
+            response = await client.get("/health")
+        wiring = {
+            "redis": "wired" if app.state.redis is not None else "skipped",
+            "db": "wired" if app.state.db_engine is not None else "skipped",
+        }
+    cleared = (
+        app.state.redis is None and app.state.db_engine is None
+    )
+    print(
+        f"app OK: /health -> {response.status_code} {response.json()}; "
+        f"redis={wiring['redis']}, db={wiring['db']}, "
+        f"state_cleared_on_shutdown={cleared}"
+    )
+
+
 def main() -> None:
-    settings = get_settings()
+    # Deterministic local defaults: a developer's .env may point at their
+    # own infrastructure (or hold experimental values); the smoke run
+    # exercises code paths, not the developer's environment.
+    settings = Settings(_env_file=None)
     setup_logging(level=settings.log_level, json_logs=settings.log_json_resolved)
     logger = get_logger("smoke")
     core_smoke(settings, logger)
     asyncio.run(services_smoke(settings, logger))
     storage_smoke(settings)
+    asyncio.run(app_smoke(settings))
 
 
 if __name__ == "__main__":
