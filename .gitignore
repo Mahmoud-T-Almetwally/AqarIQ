@@ -216,3 +216,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# scrapy artifacts
+browser_profile
+.scrapy_pf_profile
