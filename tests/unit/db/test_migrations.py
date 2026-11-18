@@ -61,7 +61,7 @@ class TestRevisionChain:
     def test_linear_chain_single_head(self, alembic_config):
         script = ScriptDirectory.from_config(alembic_config)
         heads = script.get_heads()
-        assert heads == ["0004"]
+        assert heads == ["0005"]
         revisions = {
             rev: script.get_revision(rev) for rev in ("0001", "0002", "0003", "0004")
         }

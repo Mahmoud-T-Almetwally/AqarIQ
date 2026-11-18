@@ -127,6 +127,29 @@ class TestReads:
             )
             assert await client.exists("raw/gone.json") is False
 
+    async def test_get_bytes_non_404_raises_storage_error(self, client, s3):
+        with Stubber(s3) as stub:
+            stub.add_client_error(
+                "get_object",
+                service_error_code="AccessDenied",
+                http_status_code=403,
+                expected_params={"Bucket": BUCKET, "Key": "raw/secret.bin"},
+            )
+            with pytest.raises(StorageError) as exc_info:
+                await client.get_bytes("raw/secret.bin")
+        assert exc_info.value.details["status"] == 403
+
+    async def test_exists_non_404_raises_storage_error(self, client, s3):
+        with Stubber(s3) as stub:
+            stub.add_client_error(
+                "head_object",
+                service_error_code="AccessDenied",
+                http_status_code=403,
+                expected_params={"Bucket": BUCKET, "Key": "raw/secret.bin"},
+            )
+            with pytest.raises(StorageError):
+                await client.exists("raw/secret.bin")
+
 
 class TestListingAndDeletion:
     async def test_list_keys_paginates_and_skips_directories(
@@ -176,6 +199,31 @@ class TestListingAndDeletion:
                 "delete_object", {}, {"Bucket": BUCKET, "Key": "raw/1.json"}
             )
             await client.delete("raw/1.json")
+
+    async def test_json_gz_roundtrip(self, client, s3):
+        import gzip
+        payload = gzip.compress(b'{"city":"cairo"}')
+        with Stubber(s3) as stub:
+            stub.add_response(
+                "get_object",
+                {"Body": _streaming(payload)},
+                {"Bucket": BUCKET, "Key": "raw/batch.json.gz"},
+            )
+            assert await client.get_json_gz("raw/batch.json.gz") == {"city": "cairoc"}
+
+    async def test_jsonl_gz_roundtrip(self, client, s3):
+        import gzip
+        payload = gzip.compress(b'{"id":1}\n{"id":2}\n')
+        with Stubber(s3) as stub:
+            stub.add_response(
+                "get_object",
+                {"Body": _streaming(payload)},
+                {"Bucket": BUCKET, "Key": "raw/batch.jsonl.gz"},
+            )
+            assert await client.get_jsonl_gz("raw/batch.jsonl.gz") == [{"id": 1}, {"id": 2}]
+
+    async def test_list_keys_non_positive_limit_returns_empty(self, client):
+        assert await client.list_keys("raw/", limit=0) == []
 
 
 class TestErrorMapping:

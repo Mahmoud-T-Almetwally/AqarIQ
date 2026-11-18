@@ -7,7 +7,7 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID, uuid4
 
-from core.config import Settings
+from src.core.config import Settings
 from geoalchemy2 import Geography
 from pgvector.sqlalchemy import HALFVEC
 from sqlalchemy import (
@@ -36,8 +36,8 @@ NAMING_CONVENTION: dict[str, str] = {
     "pk": "pk_%(table_name)s",
 }
 
-EMBEDDING_DIMENSIONS = Settings.embedding_dimensions if Settings.embedding_dimensions else 768  # gemini-embedding-2, Matryoshka-truncated 3072→768
-MAX_CHAT_ATTACHMENTS = Settings.chat_max_attachments_per_message if Settings.chat_max_attachments_per_message else 3
+EMBEDDING_DIMENSIONS = 768  # gemini-embedding-2, Matryoshka-truncated 3072→768
+MAX_CHAT_ATTACHMENTS = 3
 
 
 class Base(DeclarativeBase):

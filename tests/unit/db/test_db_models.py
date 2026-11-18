@@ -60,6 +60,9 @@ class TestProperties:
             "finishing", "delivery_year", "location_id", "geom",
             "title_normalized", "tsv", "features", "price_egp",
             "embedding", "is_active", "created_at", "updated_at",
+            "plot_size_m2", "furnished", "completion_status", "resale",
+            "developer_name", "description_normalized", "image_urls",
+            "floor_plan_urls", "master_plan_url"
         ):
             assert name in columns
 
@@ -80,6 +83,7 @@ class TestProperties:
         assert tsv.computed is not None
         assert "title_normalized" in tsv.computed.sqltext.text
         assert "simple" in tsv.computed.sqltext.text
+        assert "description_normalized" in tsv.computed.sqltext.text
 
     def test_features_is_jsonb(self, tables):
         assert isinstance(tables["properties"].columns["features"].type, JSONB)
@@ -120,8 +124,9 @@ class TestScrapedListings:
         columns = tables["scraped_listings"].columns
         for name in (
             "id", "property_id", "platform", "source_url", "broker_name",
-            "title_raw", "title_normalized", "raw_jsonb", "lake_key",
-            "content_hash", "first_seen_at", "last_seen_at",
+            "title_raw", "title_normalized", "source_id", "listing_ref",
+            "agent_name", "listed_date", "lake_key", "content_hash",
+            "first_seen_at", "last_seen_at",
         ):
             assert name in columns
 
@@ -137,9 +142,6 @@ class TestScrapedListings:
             c.name: c for c in tables["scraped_listings"].constraints
         }
         assert "uq_scraped_listings_source_url" in constraints
-
-    def test_raw_jsonb_nullable_for_post_merge_pruning(self, tables):
-        assert tables["scraped_listings"].columns["raw_jsonb"].nullable is True
 
     def test_broker_trgm_index(self, tables):
         indexes = {idx.name: idx for idx in tables["scraped_listings"].indexes}
@@ -163,6 +165,7 @@ class TestFinancials:
         for name in (
             "price_egp", "down_payment_egp", "installment_years",
             "monthly_payment_egp", "over_price_egp", "payment_scheme",
+            "payment_frequency", "price_per_m2"
         ):
             assert name in columns
 
