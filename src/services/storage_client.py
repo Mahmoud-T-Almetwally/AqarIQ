@@ -1,37 +1,13 @@
-"""S3-compatible object-lake client (Neon Object Storage, Tier 1).
-
-The ETL pipeline's first stage writes every raw listing snapshot here
-before anything else touches it, so ingestion can be replayed from the lake
-whenever an extractor bug is fixed (Project-Description §4). Later phases
-will also deliver generated PDFs through presigned URLs.
-
-boto3 is synchronous; every call is dispatched via
-:func:`asyncio.to_thread` so the event loop is never blocked — at this
-stack's message volumes (hundreds of listings, not millions) thread
-dispatch is well under one cold-start's cost, and it avoids a second S3
-dependency (aioboto3).
-
-Semantics chosen for the ETL consumer:
-
-* ``get_json``/``get_bytes`` return ``None`` on a missing key — a miss is
-  normal control flow (dedup checks), not an infrastructure failure;
-* every *infrastructure* failure (auth, bucket, network, throttling)
-  becomes :class:`~src.core.exceptions.StorageError` with the S3 status
-  and error code in ``details``, retryable by default — a cold object
-  store is expected to warm up.
-
-The boto3 client is exposed as :meth:`StorageClient.raw` for operations
-this wrapper does not cover (multipart uploads, lifecycle rules …).
-"""
+"""S3-compatible object-lake client (Neon Object Storage, Tier 1)."""
 
 from __future__ import annotations
 
 import asyncio
+import gzip
 import json
-from typing import Any
+from typing import Any, Iterable
 
 import boto3
-import botocore
 from botocore.exceptions import BotoCoreError, ClientError
 
 from src.core.config import Settings
@@ -52,6 +28,14 @@ def _s3_error_details(error: ClientError) -> dict[str, Any]:
         "status": metadata.get("HTTPStatusCode"),
         "request_id": metadata.get("RequestId"),
     }
+
+
+def _is_missing_error(error: ClientError) -> bool:
+    details = _s3_error_details(error)
+    return (
+        details["s3_code"] in _MISSING_KEY_CODES
+        or details["status"] == 404
+    )
 
 
 class StorageClient:
@@ -79,10 +63,9 @@ class StorageClient:
                 details=_s3_error_details(error),
             ) from error
         except (BotoCoreError, OSError) as error:
-            # Connection resets, DNS hiccups, unreachable endpoints: all
-            # transient in the free-tier world.
             raise StorageError(
-                f"S3 unreachable: {error}", details={"s3_code": "unreachable"}
+                f"S3 unreachable: {error}",
+                details={"s3_code": "unreachable"},
             ) from error
 
     async def _acall(self, func: Any, *args: Any, **kwargs: Any) -> Any:
@@ -114,6 +97,29 @@ class StorageClient:
         ).encode("utf-8")
         await self.put_bytes(key, payload, content_type="application/json")
 
+    async def put_json_gz(self, key: str, value: Any) -> None:
+        raw = json.dumps(
+            value, separators=(",", ":"), ensure_ascii=False
+        ).encode("utf-8")
+        compressed = gzip.compress(raw, compresslevel=6)
+        await self.put_bytes(key, compressed, content_type="application/gzip")
+
+    async def put_jsonl_gz(self, key: str, rows: Iterable[Any]) -> int:
+        """Write rows as gzipped JSONL and return the row count written."""
+        lines: list[bytes] = []
+        count = 0
+        for row in rows:
+            lines.append(
+                json.dumps(
+                    row, separators=(",", ":"), ensure_ascii=False
+                ).encode("utf-8")
+            )
+            count += 1
+        raw = b"\n".join(lines) + (b"\n" if lines else b"")
+        compressed = gzip.compress(raw, compresslevel=6)
+        await self.put_bytes(key, compressed, content_type="application/gzip")
+        return count
+
     # ------------------------------------------------------------------
     # Reads
     # ------------------------------------------------------------------
@@ -126,11 +132,11 @@ class StorageClient:
                 response = self._s3.get_object(Bucket=self.bucket, Key=key)
                 return response["Body"].read()
             except ClientError as error:
-                if _s3_error_details(error)["s3_code"] in _MISSING_KEY_CODES:
+                if _is_missing_error(error):
                     return None
                 raise
 
-        return await asyncio.to_thread(_get)
+        return await asyncio.to_thread(self._call, _get)
 
     async def get_json(self, key: str) -> Any | None:
         raw = await self.get_bytes(key)
@@ -144,27 +150,56 @@ class StorageClient:
                 details={"key": key, "parse_error": str(error)},
             ) from error
 
+    async def get_json_gz(self, key: str) -> Any | None:
+        compressed = await self.get_bytes(key)
+        if compressed is None:
+            return None
+        try:
+            raw = gzip.decompress(compressed)
+            return json.loads(raw)
+        except (OSError, EOFError, json.JSONDecodeError, UnicodeDecodeError) as error:
+            raise StorageError(
+                f"Object {key!r} is not valid gzipped JSON",
+                details={"key": key, "parse_error": str(error)},
+            ) from error
+
+    async def get_jsonl_gz(self, key: str) -> list[Any] | None:
+        compressed = await self.get_bytes(key)
+        if compressed is None:
+            return None
+        try:
+            raw = gzip.decompress(compressed).decode("utf-8")
+            return [
+                json.loads(line)
+                for line in raw.splitlines()
+                if line.strip()
+            ]
+        except (OSError, EOFError, json.JSONDecodeError, UnicodeDecodeError) as error:
+            raise StorageError(
+                f"Object {key!r} is not valid gzipped JSONL",
+                details={"key": key, "parse_error": str(error)},
+            ) from error
+
     async def exists(self, key: str) -> bool:
         def _head() -> bool:
             try:
                 self._s3.head_object(Bucket=self.bucket, Key=key)
                 return True
             except ClientError as error:
-                if _s3_error_details(error)["status"] == 404:
+                if _is_missing_error(error):
                     return False
                 raise
 
-        return await asyncio.to_thread(_head)
+        return await asyncio.to_thread(self._call, _head)
 
     # ------------------------------------------------------------------
     # Listing / deletion
     # ------------------------------------------------------------------
 
     async def list_keys(self, prefix: str = "", *, limit: int = 1000) -> list[str]:
-        """Keys under ``prefix`` (directories excluded), capped at ``limit``.
-
-        Paginates internally so callers never depend on page sizes.
-        """
+        """Keys under ``prefix`` (directories excluded), capped at ``limit``."""
+        if limit <= 0:
+            return []
         keys: list[str] = []
         continuation: str | None = None
 
@@ -179,7 +214,7 @@ class StorageClient:
             return self._s3.list_objects_v2(**kwargs)
 
         while len(keys) < limit:
-            page = await asyncio.to_thread(self._call, _list_page)
+            page = await self._acall(_list_page)
             for entry in page.get("Contents", []):
                 key = entry["Key"]
                 if not key.endswith("/"):
@@ -193,7 +228,7 @@ class StorageClient:
         await self._acall(self._s3.delete_object, Bucket=self.bucket, Key=key)
 
     # ------------------------------------------------------------------
-    # Presigned delivery (PDFs in a later phase)
+    # Presigned delivery (PDFs / attachments)
     # ------------------------------------------------------------------
 
     def presigned_get_url(self, key: str, *, expires_seconds: int = 3600) -> str:
