@@ -242,6 +242,25 @@ class Settings(BaseSettings):
         return self
 
     # ------------------------------------------------------------------
+    # ETL pipeline
+    # ------------------------------------------------------------------
+    usd_to_egp_rate: float = 49.5
+    etl_groq_batch_size: int = 8
+    etl_groq_daily_token_budget: int = 180_000  # buffer under Groq 200K TPD
+    etl_embedding_batch_size: int = 20
+    etl_max_image_urls: int = 6
+
+    # ------------------------------------------------------------------
+    # Chat file attachments (strictly bounded, stored compressed in lake)
+    # ------------------------------------------------------------------
+    chat_max_attachments_per_message: int = 2
+    chat_max_attachments_per_chat: int = 6
+    chat_max_attachment_bytes: int = 2 * 1024 * 1024  # 2 MiB per file
+    chat_allowed_attachment_extensions: Annotated[list[str], NoDecode] = Field(
+        default_factory=lambda: [".jpg", ".jpeg", ".png", ".webp", ".pdf"]
+    )
+
+    # ------------------------------------------------------------------
     # Derived values
     # ------------------------------------------------------------------
 
