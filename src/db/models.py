@@ -7,7 +7,6 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID, uuid4
 
-from src.core.config import Settings
 from geoalchemy2 import Geography
 from pgvector.sqlalchemy import HALFVEC
 from sqlalchemy import (

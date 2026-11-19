@@ -244,12 +244,13 @@ class StorageClient:
 def make_storage_client(settings: Settings, *, s3: Any = None) -> StorageClient:
     """Build the wrapper; an injected ``s3`` client (tests) skips
     URL-based construction."""
+    bucket = settings.s3_bucket
     if s3 is None:
         missing = [
             name
             for name, value in {
                 "S3_ENDPOINT_URL": settings.s3_endpoint_url,
-                "S3_BUCKET": settings.s3_bucket,
+                "S3_BUCKET": bucket,
                 "S3_ACCESS_KEY_ID": settings._secret_set(settings.s3_access_key_id),
                 "S3_SECRET_ACCESS_KEY": settings._secret_set(
                     settings.s3_secret_access_key
@@ -262,6 +263,11 @@ def make_storage_client(settings: Settings, *, s3: Any = None) -> StorageClient:
                 f"Object storage is not configured; missing: {', '.join(missing)}",
                 details={"missing": missing},
             )
+        # Non-None by the missing-settings check above; bound so the type
+        # checker can see it.
+        assert bucket is not None
+        assert settings.s3_access_key_id is not None
+        assert settings.s3_secret_access_key is not None
         s3 = boto3.client(
             "s3",
             endpoint_url=settings.s3_endpoint_url,
@@ -269,4 +275,11 @@ def make_storage_client(settings: Settings, *, s3: Any = None) -> StorageClient:
             aws_access_key_id=settings.s3_access_key_id.get_secret_value(),
             aws_secret_access_key=settings.s3_secret_access_key.get_secret_value(),
         )
-    return StorageClient(s3, bucket=settings.s3_bucket)
+    if bucket is None:
+        # Only reachable via an injected ``s3`` without a configured bucket
+        # (tests always set one); the wrapper needs a bucket to operate.
+        raise ConfigurationError(
+            "Object storage is not configured; missing: S3_BUCKET",
+            details={"missing": ["S3_BUCKET"]},
+        )
+    return StorageClient(s3, bucket=bucket)

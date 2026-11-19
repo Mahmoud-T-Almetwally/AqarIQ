@@ -1,0 +1,101 @@
+# CI for AqarIQ — static checks + unit tests only.
+#
+# Design note (demo-only pivot): AqarIQ currently runs as a demo. The hosted
+# GitHub runners use datacenter IPs that the scraped portals (PropertyFinder,
+# Nawy) block outright, and in demo mode there is no production queue to
+# drain and no always-on service to keep alive. This pipeline therefore
+# intentionally contains NO scraping, queue-drain or keepalive jobs:
+#
+#   * scraping + ETL run locally on the developer machine; their outputs are
+#     seeded, never fetched from runners;
+#   * everything here is offline: unit tests run on SQLite/fakes (aiosqlite,
+#     fakeredis, injected connections, boto3 Stubber), mypy and ruff are
+#     static, and scripts/smoke_core.py renders the Alembic chain offline;
+#   * if a live integration tier is added later (dockerized Postgres+pgvector,
+#     RabbitMQ, Redis), add it as a separate job — do not reintroduce scraper
+#     jobs, they will only ever see blocked IPs.
+#
+# Tool versions are pinned to match requirements-dev.txt so a local
+# `pip install -r requirements-dev.txt` reproduces CI exactly.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Superseded runs on the same ref are cancelled: fewer queued jobs, one
+# unambiguous status per commit.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Least privilege — this pipeline only ever reads the repository.
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint (ruff)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install ruff
+        run: python -m pip install ruff==0.17.5
+
+      - name: Ruff (ruleset pinned in ruff.toml)
+        run: ruff check .
+
+  typecheck:
+    name: Type check (mypy, src/)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt mypy==2.4.1
+
+      - name: Mypy (scope pinned in mypy.ini)
+        run: mypy
+
+  test:
+    name: Tests (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      # Keep the other leg's result visible when one fails.
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Unit tests
+        run: python -m pytest
+
+      - name: Offline smoke (app factory, /health, migration render)
+        env:
+          PYTHONPATH: .
+        run: python scripts/smoke_core.py

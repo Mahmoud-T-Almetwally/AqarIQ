@@ -29,7 +29,7 @@ import email.utils
 import math
 import re
 import time
-from datetime import datetime, timezone
+from datetime import timezone
 from dataclasses import dataclass, field
 from functools import lru_cache
 from typing import Mapping
@@ -111,7 +111,9 @@ class ProviderQuota:
     def seconds_until_reset(self) -> float | None:
         """Seconds until the provider may accept traffic again, if cooling."""
         if not self.available:
-            return max(0.0, math.ceil(self._exhausted_until - time.monotonic()))
+            until = self._exhausted_until
+            if until is not None:  # always true when `available` is False
+                return max(0.0, math.ceil(until - time.monotonic()))
         return None
 
     def snapshot(self) -> dict[str, object]:

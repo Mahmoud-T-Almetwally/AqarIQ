@@ -33,7 +33,6 @@ falls back to ``request.state.request_id`` (written onto the ASGI scope by
 
 from __future__ import annotations
 
-import logging
 from typing import Any, Mapping
 
 from fastapi import FastAPI, Request
@@ -305,7 +304,9 @@ def _error_response(
     code: str,
     message: str,
     details: Mapping[str, Any] | None = None,
-    retry_after: int | None = None,
+    # HTTP header values arrive as strings ("Retry-After"); the 429 builder
+    # may pass a parsed int. Both serialize fine into the JSON envelope.
+    retry_after: int | str | None = None,
     traceback_text: str | None = None,
 ) -> JSONResponse:
     payload: dict[str, Any] = {

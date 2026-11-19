@@ -1,0 +1,9 @@
+# Ruff configuration for AqarIQ.
+#
+# Deliberately minimal: the classic correctness-only ruleset (pycodestyle
+# errors + Pyflakes) so lint is green and meaningful from the first CI run.
+# Widen later (I = import sorting, UP = pyupgrade, B = bugbear, ...) once the
+# backlog they would create has been worked through — preview a rule with:
+#   ruff check --select <RULE> --statistics .
+[lint]
+select = ["E4", "E7", "E9", "F"]

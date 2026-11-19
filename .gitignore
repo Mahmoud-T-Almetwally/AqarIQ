@@ -220,3 +220,7 @@ __marimo__/
 # scrapy artifacts
 browser_profile
 .scrapy_pf_profile
+# Scrapy run artefacts - payloads and checkpoints never belong in git
+scrappers/unified_output.jsonl
+scrappers/checkpoints/
+scrappers/output/

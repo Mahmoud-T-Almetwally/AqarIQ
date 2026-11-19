@@ -91,7 +91,11 @@ class RedisClient:
 
     async def get(self, key: str) -> str | None:
         try:
-            return await self._client.get(self.namespaced(key))
+            # decode_responses=True (set in make_redis_client) makes the
+            # client return str; the redis-py stubs cannot know that.
+            value = await self._client.get(self.namespaced(key))
+            assert not isinstance(value, bytes)
+            return value
         except aioredis.RedisError as error:
             return self._degrade("get", key, error)
 

@@ -24,7 +24,7 @@ from httpx2 import ASGITransport, AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
-from src.db.session import create_session_factory, dispose_engine
+from src.db.session import dispose_engine
 from src.main import create_app, lifespan
 from src.services.redis_client import make_redis_client
 

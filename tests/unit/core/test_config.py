@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from src.core.config import Environment, Settings, get_settings
+from src.core.config import Environment, get_settings
 from src.core.exceptions import ConfigurationError
 
 PROD_ENV = {

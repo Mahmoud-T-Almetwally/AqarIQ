@@ -50,7 +50,6 @@ def upgrade_sql(alembic_config) -> str:
 
 def _capture_alembic(config: Config, buffer: io.StringIO) -> tuple[str, str]:
     import contextlib
-    import sys
 
     with contextlib.redirect_stdout(buffer):
         command.upgrade(config, "head", sql=True)
