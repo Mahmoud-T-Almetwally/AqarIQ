@@ -209,7 +209,7 @@ class TestListingAndDeletion:
                 {"Body": _streaming(payload)},
                 {"Bucket": BUCKET, "Key": "raw/batch.json.gz"},
             )
-            assert await client.get_json_gz("raw/batch.json.gz") == {"city": "cairoc"}
+            assert await client.get_json_gz("raw/batch.json.gz") == {"city": "cairo"}
 
     async def test_jsonl_gz_roundtrip(self, client, s3):
         import gzip
