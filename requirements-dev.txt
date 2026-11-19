@@ -4,3 +4,6 @@ pytest-asyncio==1.4.1.post1
 httpx2==2.16.0
 fakeredis==2.40.0
 aiosqlite==0.22.1
+# Static analysis (CI + local parity; pinned to the versions the pipeline validates against)
+mypy==2.4.1
+ruff==0.17.5
