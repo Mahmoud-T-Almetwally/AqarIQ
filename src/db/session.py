@@ -75,7 +75,7 @@ def engine_kwargs(url: URL, settings: Settings) -> dict[str, Any]:
             # Neon autosuspend drops idle connections; recycle them
             # instead of surfacing "connection was closed mid-operation".
             pool_pre_ping=True,
-            connect_args={"ssl":"required"}
+            connect_args={"ssl":"require"}
         )
         if _is_pooler_url(url):
             kwargs["connect_args"].update(statement_cache_size=0)

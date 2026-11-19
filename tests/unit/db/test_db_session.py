@@ -41,7 +41,7 @@ def settings(make_settings):
 class TestEngineKwargs:
     def test_pooler_url_disables_statement_cache(self, settings):
         kwargs = engine_kwargs(make_url(POOLER_URL), settings)
-        assert kwargs["connect_args"] == {"ssl": "required", "statement_cache_size": 0}
+        assert kwargs["connect_args"] == {"ssl": "require", "statement_cache_size": 0}
 
     def test_direct_url_keeps_statement_cache(self, settings):
         kwargs = engine_kwargs(make_url(DIRECT_URL), settings)
