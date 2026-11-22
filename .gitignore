@@ -224,3 +224,7 @@ browser_profile
 scrappers/unified_output.jsonl
 scrappers/checkpoints/
 scrappers/output/
+
+# ETL batch outputs (data/manifest.json lives inside data/processed/ and is
+# summarized in the committed scripts/data_quality_report.md)
+data/processed/
