@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 from dataclasses import dataclass
 from typing import Any
 
@@ -126,6 +127,7 @@ class LLMClient:
         settings: Settings,
         registry: RateLimitRegistry | None = None,
         http_client: httpx2.AsyncClient | None = None,
+        quota_key: str | None = None,
     ) -> None:
         if not base_url or not base_url.startswith(("http://", "https://")):
             raise ConfigurationError(
@@ -137,7 +139,10 @@ class LLMClient:
         self.default_model = default_model
         self.settings = settings
         self.registry = registry or get_rate_limit_registry()
-        self.quota: ProviderQuota = self.registry.get(provider)
+        # Quota tracking is keyed per model, not per provider: Groq's
+        # free-tier limits (RPM/TPM/TPD) are per model, so a daily-exhausted
+        # primary must not fail-fast a fresh fallback on the same key.
+        self.quota: ProviderQuota = self.registry.get(quota_key or provider)
         self._url = f"{self.base_url}{_CHAT_COMPLETIONS_PATH}"
         self._auth_headers = {
             "Authorization": f"Bearer {api_key}",
@@ -274,7 +279,7 @@ class LLMClient:
             reset = self.quota.seconds_until_reset()
             raise LLMRateLimitError(
                 f"{self.provider} quota is exhausted; retry later",
-                retry_after=int(reset) if reset else None,
+                retry_after=max(1, math.ceil(reset)) if reset and reset > 0 else None,
             )
 
     def _on_error_response(
@@ -285,9 +290,18 @@ class LLMClient:
         if status == 429:
             retry_after = parse_retry_after(response.headers.get("retry-after"))
             self.quota.mark_exhausted(retry_after)
+            effective_wait = (
+                retry_after
+                if retry_after is not None
+                else self.quota.seconds_until_reset()
+            )
             return LLMRateLimitError(
                 f"{self.provider} rate limit hit",
-                retry_after=int(retry_after) if retry_after is not None else None,
+                retry_after=(
+                    max(1, math.ceil(effective_wait))
+                    if effective_wait is not None and effective_wait > 0
+                    else None
+                ),
             )
         if status in (401, 403):
             return LLMAuthError(
@@ -302,7 +316,6 @@ class LLMClient:
                 "provider": self.provider,
                 "model": model,
                 "status": status,
-                "body": response.text[:500],
             },
         )
 

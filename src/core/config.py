@@ -124,6 +124,7 @@ class Settings(BaseSettings):
     groq_api_key: SecretStr | None = None
     groq_base_url: str = "https://api.groq.com/openai/v1"
     groq_model: str = "openai/gpt-oss-120b"
+    groq_fallback_model: str = "qwen/qwen3.8-27b"  # ETL tier: fresh 8K TPM / 200K TPD bucket
     groq_prompt_guard_model: str = "meta-llama/llama-prompt-guard-2-86m"
 
     # Jev intent-router provider (vLLM-SR).
@@ -245,8 +246,9 @@ class Settings(BaseSettings):
     # ETL pipeline
     # ------------------------------------------------------------------
     usd_to_egp_rate: float = 49.5
-    etl_groq_batch_size: int = 8
-    etl_groq_daily_token_budget: int = 180_000  # buffer under Groq 200K TPD
+    etl_groq_batch_size: int = 5  # token-bounded: 8K TPM must fit one batch + answer
+    etl_groq_minute_token_budget: int = 7_500  # buffer under Groq 8K TPM (per model)
+    etl_groq_daily_token_budget: int = 180_000  # buffer under Groq 200K TPD (per model)
     etl_embedding_batch_size: int = 20
     etl_max_image_urls: int = 6
 
