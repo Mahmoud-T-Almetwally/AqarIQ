@@ -244,7 +244,7 @@ class TestLLMRateLimitPolicy:
             [listing], tmp_path / "cache.json", settings=None,
             batch_size=8, client=client,
         )
-        assert "ceiling" in result["stopped_reason"]
+        assert "daily token budget exhausted" in result["stopped_reason"]
         assert result["requests"] == 0
         assert result["fills"]["finishing"] == 0
 
@@ -257,13 +257,15 @@ class TestLLMRateLimitPolicy:
         assert "authentication" in result["stopped_reason"]
         assert client.calls == 1  # no retries on a bad key
 
-    async def test_skips_failing_batches_then_stops_after_three(
+    async def test_skips_failing_batches_then_stops_after_five(
         self, tmp_path: Path
     ):
-        listings = [_pending_listing(str(i)) for i in range(4)]
+        listings = [_pending_listing(str(i)) for i in range(6)]
         client = _FakeChatClient(
             [
                 _FakeResponse([{"i": 1, "finishing": "finished"}]),
+                LLMError("unreachable"),
+                LLMError("unreachable"),
                 LLMError("unreachable"),
                 LLMError("unreachable"),
                 LLMError("unreachable"),
@@ -275,8 +277,8 @@ class TestLLMRateLimitPolicy:
         )
         assert result["batches_done"] == 1
         assert result["fills"]["finishing"] == 1
-        assert "3 consecutive batch failures" in result["stopped_reason"]
-        assert client.calls == 4
+        assert "5 consecutive batch failures" in result["stopped_reason"]
+        assert client.calls == 6
 
     async def test_resumes_from_existing_cache(self, tmp_path: Path):
         listing_a, listing_b = _pending_listing("1"), _pending_listing("2")
